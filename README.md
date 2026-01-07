@@ -6,14 +6,7 @@
 
 A countdown as a loop. Simple, but the function can run for minutes, hours, or days, despite restarts.
 
-<Tabs groupId="language" defaultValue="typescript" values={[
-{ label: "TypeScript", value: "typescript" },
-{ label: "Python", value: "python" },
-]}>
-
-<TabItem value="typescript">
-
-```typescript title="countdown.ts"
+```typescript
 import { Resonate, type Context } from "@resonatehq/sdk";
 
 function* countdown(context: Context, count: number, delay: number) {
