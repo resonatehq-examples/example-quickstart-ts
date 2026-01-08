@@ -1,6 +1,6 @@
-# Quickstart | Resonate TypeScript SDK
-
 ![quickstart banner](/assets/quickstart-banner.png)
+
+# Quickstart | Resonate TypeScript SDK
 
 ## The function you are about to activate
 
