@@ -32,7 +32,7 @@ jobs:
       - name: Install Resonate server
         run: |
           set -euo pipefail
-          url="https://github.com/resonatehq/resonate/releases/download/v${RESONATE_VERSION}/resonate-linux-amd64.tar.gz"
+          url="https://github.com/resonatehq/resonate/releases/download/v${RESONATE_VERSION}/resonate_linux_x86_64.tar.gz"
           curl -fsSL "$url" | tar -xz
           sudo mv resonate /usr/local/bin/
           resonate --version
