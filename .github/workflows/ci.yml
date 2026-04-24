@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  # First-run check: verify this tag + asset name against the real releases at
+  # https://github.com/resonatehq/resonate/releases — adjust if naming differs.
+  RESONATE_VERSION: "0.9.3"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Resonate server
+        run: |
+          set -euo pipefail
+          url="https://github.com/resonatehq/resonate/releases/download/v${RESONATE_VERSION}/resonate_linux_x86_64.tar.gz"
+          curl -fsSL "$url" | tar -xz
+          sudo mv resonate /usr/local/bin/
+          resonate --version
+
+      - name: Start Resonate server
+        run: |
+          set -euo pipefail
+          resonate dev > server.log 2>&1 &
+          echo $! > server.pid
+          for i in $(seq 1 30); do
+            if curl -sfo /dev/null http://localhost:8001/health 2>/dev/null \
+               || curl -sfo /dev/null http://localhost:8001/ 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not come up" >&2; cat server.log; exit 1
+
+      - name: Start worker
+        run: |
+          set -euo pipefail
+          ( exec npx ts-node countdown.ts > worker.log 2>&1 ) &
+          echo $! > worker.pid
+          # Wait for the worker to connect to the server before invoking
+          sleep 5
+
+      - name: Invoke and assert
+        run: |
+          set -euo pipefail
+          # CI uses shorter args than the README's `--arg 5 --arg 60`: the
+          # README's values produce 5 minutes of wall-clock sleep (delay arg
+          # is in seconds), which is too slow for CI. Smaller args still
+          # exercise the same durable-countdown machinery.
+          resonate invoke countdown.1 --func countdown --arg 3 --arg 1 | tee invoke.out
+          # resonate invoke returns immediately with the promise id; the actual
+          # "Countdown: N" output is written by the worker asynchronously.
+          # Poll worker.log for up to 30s waiting for the first iteration.
+          for i in $(seq 1 30); do
+            if grep -qF -- "Countdown: 3" worker.log 2>/dev/null; then
+              echo "asserted: Countdown: 3 observed in worker.log"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "assertion failed: 'Countdown: 3' not in worker.log after 30s" >&2
+          exit 1
+
+      - name: Worker logs
+        if: always()
+        run: cat worker.log || true
+
+      - name: Server logs
+        if: always()
+        run: cat server.log || true
+
+      - name: Stop processes
+        if: always()
+        run: |
+          for f in worker.pid server.pid; do
+            [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null || true
+          done
+          pkill -P $$ 2>/dev/null || true
