@@ -56,14 +56,29 @@ jobs:
           set -euo pipefail
           ( exec npx ts-node countdown.ts > worker.log 2>&1 ) &
           echo $! > worker.pid
-          sleep 3
+          # Wait for the worker to connect to the server before invoking
+          sleep 5
 
       - name: Invoke and assert
         run: |
           set -euo pipefail
-          resonate invoke countdown.1 --func countdown --arg 5 --arg 60 | tee invoke.out
-          grep -qF -- "Countdown: 5" invoke.out \
-            || grep -qF -- "Countdown: 5" worker.log
+          # CI uses shorter args than the README's `--arg 5 --arg 60`: the
+          # README's values produce 5 minutes of wall-clock sleep (delay arg
+          # is in seconds), which is too slow for CI. Smaller args still
+          # exercise the same durable-countdown machinery.
+          resonate invoke countdown.1 --func countdown --arg 3 --arg 1 | tee invoke.out
+          # resonate invoke returns immediately with the promise id; the actual
+          # "Countdown: N" output is written by the worker asynchronously.
+          # Poll worker.log for up to 30s waiting for the first iteration.
+          for i in $(seq 1 30); do
+            if grep -qF -- "Countdown: 3" worker.log 2>/dev/null; then
+              echo "asserted: Countdown: 3 observed in worker.log"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "assertion failed: 'Countdown: 3' not in worker.log after 30s" >&2
+          exit 1
 
       - name: Worker logs
         if: always()
